@@ -1,10 +1,11 @@
-// Rendering: everything the player sees, drawn on one canvas. Order matters —
-// floor, then vision cones, then walls and cases over the cones (so a cone
-// reads as blocked by a wall), then the people and the loot, then the HUD.
+// Rendering: everything the player sees, drawn on one canvas. Order
+// matters — floor, then vision cones, then walls and cases over the cones
+// (so a cone reads as blocked by a wall), then the people and the loot,
+// then the HUD.
 
-import { COLORS, VIEW, GUARD, CAMERA, ALARM } from './config.js';
+import { COLORS, VIEW, GUARD, CAMERA, ALARM, DIFFICULTY } from './config.js';
 import {
-  WALLS, CASES, SHADOWS, PAINTINGS, PEDESTAL, ROPE, ENTRY, EXIT, floorRect,
+  WALLS, CASES, SHADOWS, PAINTINGS, PEDESTAL, ROPE, VAULT, VAULT_DOOR, ENTRY, EXIT, floorRect,
 } from './level.js';
 
 function conePath(ctx, x, y, facing, halfAngle, range) {
@@ -42,11 +43,36 @@ function drawFloor(ctx) {
     ctx.lineTo(floor.x + floor.w, y);
     ctx.stroke();
   }
+  // Accent tiles: small gold diamonds where the grid lines cross.
+  ctx.strokeStyle = 'rgba(242, 193, 78, 0.25)';
+  for (const x of [222, 518, 814, 1110]) {
+    for (const y of [236, 532]) {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 7);
+      ctx.lineTo(x + 7, y);
+      ctx.lineTo(x, y + 7);
+      ctx.lineTo(x - 7, y);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+  // Red carpet down the middle path, past the spine wall.
+  ctx.fillStyle = COLORS.carpet;
+  ctx.fillRect(644, 100, 52, 656);
+  ctx.strokeStyle = COLORS.carpetEdge;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(644, 100);
+  ctx.lineTo(644, 756);
+  ctx.moveTo(696, 100);
+  ctx.lineTo(696, 756);
+  ctx.stroke();
   // Shadow patches: darker floor where the spotlights do not reach.
   for (const s of SHADOWS) {
     ctx.fillStyle = COLORS.shadow;
     ctx.fillRect(s.x, s.y, s.w, s.h);
     ctx.strokeStyle = 'rgba(120, 140, 180, 0.12)';
+    ctx.lineWidth = 1;
     ctx.strokeRect(s.x + 0.5, s.y + 0.5, s.w, s.h);
   }
 }
@@ -54,13 +80,13 @@ function drawFloor(ctx) {
 function drawCones(ctx, guards, cameras) {
   for (const guard of guards) {
     ctx.fillStyle = guard.seeing ? COLORS.guardConeHot : COLORS.guardCone;
-    conePath(ctx, guard.x, guard.y, guard.facing, GUARD.viewHalfAngle, GUARD.viewRange);
+    conePath(ctx, guard.x, guard.y, guard.facing, GUARD.viewHalfAngle, guard.viewRange);
     ctx.fill();
   }
   for (const camera of cameras) {
     if (camera.disabledLeft > 0) continue;
     ctx.fillStyle = COLORS.cameraCone;
-    conePath(ctx, camera.x, camera.y, camera.angle, CAMERA.viewHalfAngle, CAMERA.viewRange);
+    conePath(ctx, camera.x, camera.y, camera.angle, CAMERA.viewHalfAngle, camera.viewRange);
     ctx.fill();
   }
 }
@@ -157,6 +183,48 @@ function drawPedestal(ctx, hasLoot, time) {
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.arc(PEDESTAL.x - 3, PEDESTAL.y - 5, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawVault(ctx, hasVault, time) {
+  // The vault's name over its top wall, and gold posts framing the door.
+  ctx.fillStyle = COLORS.gold;
+  ctx.font = 'bold 13px "Trebuchet MS", Verdana, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('VAULT', 1095, 602);
+  ctx.fillRect(VAULT_DOOR.x - 2, VAULT_DOOR.y - 6, VAULT_DOOR.w + 4, 8);
+  ctx.fillRect(VAULT_DOOR.x - 2, VAULT_DOOR.y + VAULT_DOOR.h - 2, VAULT_DOOR.w + 4, 8);
+  // The plinth.
+  ctx.fillStyle = '#2a3348';
+  ctx.beginPath();
+  ctx.arc(VAULT.x, VAULT.y, VAULT.r + 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#4a3a6e';
+  ctx.beginPath();
+  ctx.arc(VAULT.x, VAULT.y, VAULT.r, 0, Math.PI * 2);
+  ctx.fill();
+  if (!hasVault) {
+    // The Meridian Sceptre: a staff with a glowing orb, pulsing gently.
+    const pulse = 0.75 + Math.sin(time * 3 + 1) * 0.25;
+    ctx.save();
+    ctx.shadowColor = COLORS.sceptre;
+    ctx.shadowBlur = 20 * pulse;
+    ctx.strokeStyle = COLORS.gold;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(VAULT.x, VAULT.y + 14);
+    ctx.lineTo(VAULT.x, VAULT.y - 10);
+    ctx.stroke();
+    ctx.fillStyle = COLORS.sceptre;
+    ctx.beginPath();
+    ctx.arc(VAULT.x, VAULT.y - 15, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(VAULT.x - 2, VAULT.y - 17, 2, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -272,7 +340,7 @@ function drawPlayer(ctx, player, time) {
   ctx.beginPath();
   ctx.arc(player.x, player.y, 4, 0, Math.PI * 2);
   ctx.fill();
-  // The lifted diamond rides on the thief.
+  // The lifted diamond rides on the thief, and the sceptre beside it.
   if (player.hasLoot) {
     const bob = Math.sin(time * 4) * 2;
     ctx.fillStyle = COLORS.diamond;
@@ -284,7 +352,13 @@ function drawPlayer(ctx, player, time) {
     ctx.closePath();
     ctx.fill();
   }
-  // Lockpick progress ring.
+  if (player.hasVault) {
+    ctx.fillStyle = COLORS.sceptre;
+    ctx.beginPath();
+    ctx.arc(player.x + 10, player.y - 18, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Lockpick progress ring, and a violet one for the vault crack.
   if (player.lockpick > 0 && player.lockpick < 1) {
     ctx.strokeStyle = 'rgba(232, 228, 216, 0.35)';
     ctx.lineWidth = 5;
@@ -294,6 +368,17 @@ function drawPlayer(ctx, player, time) {
     ctx.strokeStyle = COLORS.gold;
     ctx.beginPath();
     ctx.arc(player.x, player.y, player.radius + 10, -Math.PI / 2, -Math.PI / 2 + player.lockpick * Math.PI * 2);
+    ctx.stroke();
+  }
+  if (player.vaultPick > 0 && player.vaultPick < 1) {
+    ctx.strokeStyle = 'rgba(232, 228, 216, 0.35)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius + 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = COLORS.sceptre;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius + 10, -Math.PI / 2, -Math.PI / 2 + player.vaultPick * Math.PI * 2);
     ctx.stroke();
   }
 }
@@ -342,17 +427,20 @@ function drawHud(ctx, world) {
   ctx.font = '12px "Trebuchet MS", Verdana, sans-serif';
   ctx.fillText(world.hint, VIEW.width / 2, 46);
 
-  // Loot, tools, timer, score.
+  // Loot, tools, timer, score, difficulty.
   const mins = Math.floor(world.time / 60);
   const secs = Math.floor(world.time % 60);
   ctx.textAlign = 'right';
+  const lootText = world.player.hasVault
+    ? '◆ LOOT + VAULT SECURED'
+    : world.player.hasLoot ? '◆ LOOT SECURED' : '◇ LOOT: THE STAR';
   ctx.fillStyle = world.player.hasLoot ? COLORS.gold : COLORS.dimText;
   ctx.font = 'bold 14px "Trebuchet MS", Verdana, sans-serif';
-  ctx.fillText(world.player.hasLoot ? '◆ LOOT SECURED' : '◇ LOOT: THE STAR', VIEW.width - 20, 20);
+  ctx.fillText(lootText, VIEW.width - 20, 20);
   ctx.fillStyle = COLORS.text;
   ctx.font = '13px "Trebuchet MS", Verdana, sans-serif';
   ctx.fillText(
-    `smoke ${world.player.smokeUses} · EMP ${world.player.empUses} · ${mins}:${String(secs).padStart(2, '0')} · SCORE ${world.score}`,
+    `smoke ${world.player.smokeUses} · EMP ${world.player.empUses} · ${mins}:${String(secs).padStart(2, '0')} · SCORE ${world.score} · ${DIFFICULTY[world.difficulty].label}`,
     VIEW.width - 20,
     44,
   );
@@ -389,6 +477,7 @@ export function renderWorld(ctx, world) {
   drawWalls(ctx);
   drawCases(ctx);
   drawPedestal(ctx, world.player.hasLoot, world.time);
+  drawVault(ctx, world.player.hasVault, world.time);
   drawSmoke(ctx, world.smokes);
   drawCameras(ctx, world.cameras);
   drawGuards(ctx, world.guards);
@@ -412,6 +501,7 @@ export function renderWorld(ctx, world) {
       'Slip past the guards and the cameras. Lift the Star of Meridian.',
       'Get out the service door before the alarm hits 100%.',
       'WASD move · Shift sprint · hold E to crack the case · 1 smoke · 2 EMP',
+      `Difficulty ${DIFFICULTY[world.difficulty].label} — press 1 Easy, 2 Normal, 3 Hard to change`,
       'Press any key to begin the job.',
     ], COLORS.gold);
   } else if (world.mode === 'paused') {
@@ -424,10 +514,13 @@ export function renderWorld(ctx, world) {
     ], '#e85460');
   } else if (world.mode === 'won') {
     const b = world.winBreakdown;
-    drawPanel(ctx, 'GETAWAY CLEAN', [
-      `Diamond ${b.diamond} · time bonus ${b.timeBonus} · stealth ${b.stealth} · tools ${b.tools}`,
+    const lines = [
+      `Diamond ${b.diamond} · vault ${b.vault} · time ${b.timeBonus} · stealth ${b.stealth} · tools ${b.tools}`,
       `TOTAL SCORE ${b.total}`,
-      'Press R to run it again.',
-    ], COLORS.gold);
+    ];
+    if (b.ghost) lines.push(`GHOST — never spotted · +${b.ghostBonus}`);
+    if (b.best) lines.push(`Best score ${b.best}`);
+    lines.push('Press R to run it again.');
+    drawPanel(ctx, b.ghost ? 'GETAWAY CLEAN · GHOST' : 'GETAWAY CLEAN', lines, COLORS.gold);
   }
 }

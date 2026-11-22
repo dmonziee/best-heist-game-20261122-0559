@@ -1,6 +1,7 @@
-// Guards: they walk their patrol loop, watch with a vision cone, and hunt
-// the thief's last seen position when the alarm runs hot. A guard that
-// reaches the thief ends the run.
+// Guards: they walk their patrol loop, watch with a vision cone, and
+// hunt the thief's last seen position when the alarm runs hot. A guard
+// that reaches the thief ends the run. Each guard carries its own view
+// range and hunt speed so the difficulty setting can scale them.
 
 import { GUARD } from './config.js';
 import { angleTo, coneSees, distance, insideShadow, insideSmoke } from './vision.js';
@@ -16,6 +17,8 @@ export function createGuard(def) {
     waypoints: def.waypoints,
     waypointIndex: 1,
     speed: def.speed,
+    viewRange: GUARD.viewRange,
+    huntSpeed: GUARD.huntSpeed,
     state: 'patrol', // patrol | hunt | wait
     waitLeft: 0,
     lastSeen: null,
@@ -33,7 +36,7 @@ export function updateGuard(guard, dt, player, blockers, shadows, smokes, alarmH
   let spot = 0;
   if (!playerHidden) {
     spot = coneSees(
-      guard, guard.facing, GUARD.viewRange, GUARD.viewHalfAngle, player, blockers,
+      guard, guard.facing, guard.viewRange, GUARD.viewHalfAngle, player, blockers,
     );
     if (spot > 0 && inShadow) spot *= 0.5;
   }
@@ -53,7 +56,7 @@ export function updateGuard(guard, dt, player, blockers, shadows, smokes, alarmH
       guard.state = 'wait';
       guard.waitLeft = 1.4;
     } else {
-      moveToward(guard, target, GUARD.huntSpeed, dt);
+      moveToward(guard, target, guard.huntSpeed, dt);
     }
   } else if (guard.state === 'wait') {
     guard.waitLeft -= dt;

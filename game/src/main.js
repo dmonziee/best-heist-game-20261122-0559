@@ -1,18 +1,21 @@
-// The Meridian Job — game loop and state machine. Boots the world, reads the
-// keyboard, steps every system once a frame and hands the world to the
-// renderer. Modes: briefing, playing, paused, caught, won.
+// The Meridian Job — game loop and state machine. Boots the world, reads
+// the keyboard, steps every system once a frame and hands the world to the
+// renderer. Modes: briefing, playing, paused, caught, won. The difficulty
+// picked on the briefing screen (1, 2 or 3) survives restarts, so R never
+// silently drops the player back to Normal.
 
-import { VIEW, PLAYER, ALARM, TOOLS, SCORE } from './config.js';
+import { VIEW, PLAYER, ALARM, TOOLS, SCORE, DIFFICULTY } from './config.js';
 import {
-  WALLS, CASES, SHADOWS, GUARD_DEFS, CAMERA_DEFS, ENTRY, EXIT, PEDESTAL, sightBlockers,
+  WALLS, CASES, SHADOWS, GUARD_DEFS, CAMERA_DEFS, ENTRY, EXIT, PEDESTAL,
+  VAULT, sightBlockers,
 } from './level.js';
 import { createInput } from './input.js';
 import { createGuard, updateGuard, guardTouched } from './guards.js';
 import { createCamera, updateCamera, disableAllCameras } from './cameras.js';
 import {
-  createPlayer, updatePlayer, updateLockpick, useSmoke, useEmp, atExit,
+  createPlayer, updatePlayer, updateLockpick, updateVault, useSmoke, useEmp, atExit,
 } from './player.js';
-import { createAlarm, updateAlarm, tripCaseAlarm, isHunting } from './alarm.js';
+import { createAlarm, updateAlarm, tripCaseAlarm, tripVaultAlarm, isHunting } from './alarm.js';
 import { renderWorld } from './render.js';
 import { applyPose } from './poses.js';
 import {
@@ -25,11 +28,48 @@ const ctx = canvas.getContext('2d');
 const input = createInput();
 const blockers = sightBlockers();
 const pedestalSolid = { x: PEDESTAL.x - 30, y: PEDESTAL.y - 30, w: 60, h: 60 };
-const solids = [...WALLS, ...CASES, pedestalSolid];
+const vaultSolid = { x: VAULT.x - 26, y: VAULT.y - 26, w: 52, h: 52 };
+const solids = [...WALLS, ...CASES, pedestalSolid, vaultSolid];
+
+// The difficulty the player picked; createWorld reads it so a restart
+// keeps the same job.
+let chosenDifficulty = 'normal';
+
+function readBest() {
+  try {
+    const raw = window.localStorage.getItem('meridian-best');
+    const n = raw === null ? 0 : parseInt(raw, 10);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveBest(score) {
+  try {
+    window.localStorage.setItem('meridian-best', String(score));
+  } catch {
+    // Storage can be off; the game plays on without a best score.
+  }
+}
+
+function applyDifficulty(world) {
+  const d = DIFFICULTY[world.difficulty];
+  for (const guard of world.guards) {
+    guard.speed *= d.guardSpeed;
+    guard.huntSpeed *= d.huntSpeed;
+    guard.viewRange *= d.viewRange;
+  }
+  for (const camera of world.cameras) {
+    camera.viewRange *= d.viewRange;
+  }
+  world.alarm.rateMul = d.alarmRate;
+}
 
 function createWorld() {
-  return {
+  const world = {
     mode: 'briefing',
+    difficulty: chosenDifficulty,
     time: 0,
     player: createPlayer(ENTRY),
     guards: GUARD_DEFS.map(createGuard),
@@ -43,10 +83,17 @@ function createWorld() {
     caughtReason: '',
     winBreakdown: null,
     wasSeeing: false,
+    everSeen: false,
+    best: readBest(),
   };
+  applyDifficulty(world);
+  return world;
 }
 
 let world = createWorld();
+
+// Lets scripted playthroughs and tests read the live state.
+window.__meridian = { get world() { return world; } };
 
 // A ?shot=cover|loot|alarm|escape pose stages a real moment for screenshots.
 const params = new URLSearchParams(window.location.search);
@@ -60,7 +107,8 @@ function toolCosts() {
 }
 
 function refreshScore() {
-  world.score = (world.player.hasLoot ? SCORE.diamond : 0) + toolCosts();
+  world.score = (world.player.hasLoot ? SCORE.diamond : 0) +
+    (world.player.hasVault ? SCORE.vault : 0) + toolCosts();
 }
 
 function catchThief(reason) {
@@ -75,21 +123,53 @@ function winJob() {
     SCORE.timeBonusStart - Math.floor(world.time) * SCORE.timeBonusPerSecond,
   );
   const stealth = world.alarm.max < SCORE.stealthAlarmCap ? SCORE.stealthBonus : 0;
+  const ghost = !world.everSeen;
+  const ghostBonus = ghost ? SCORE.ghostBonus : 0;
   const tools = toolCosts();
+  const vault = world.player.hasVault ? SCORE.vault : 0;
+  const total = Math.max(0, SCORE.diamond + vault + timeBonus + stealth + ghostBonus + tools);
+  const best = Math.max(world.best, total);
+  if (total > world.best) saveBest(total);
   world.winBreakdown = {
     diamond: SCORE.diamond,
+    vault,
     timeBonus,
     stealth,
+    ghost,
+    ghostBonus,
     tools,
-    total: Math.max(0, SCORE.diamond + timeBonus + stealth + tools),
+    total,
+    best,
   };
-  world.score = world.winBreakdown.total;
+  world.score = total;
   world.mode = 'won';
   soundWin();
 }
 
 function update(dt) {
   if (world.mode === 'briefing') {
+    // Difficulty first: 1, 2 and 3 pick a job without starting it.
+    if (input.wasPressed('Digit1') || input.wasPressed('Numpad1')) {
+      chosenDifficulty = 'easy';
+      world = createWorld();
+      unlockAudio();
+      soundClick();
+      return;
+    }
+    if (input.wasPressed('Digit2') || input.wasPressed('Numpad2')) {
+      chosenDifficulty = 'normal';
+      world = createWorld();
+      unlockAudio();
+      soundClick();
+      return;
+    }
+    if (input.wasPressed('Digit3') || input.wasPressed('Numpad3')) {
+      chosenDifficulty = 'hard';
+      world = createWorld();
+      unlockAudio();
+      soundClick();
+      return;
+    }
     if (input.anyKey()) {
       unlockAudio();
       soundClick();
@@ -143,14 +223,30 @@ function update(dt) {
     tripCaseAlarm(world.alarm);
     soundPickup();
     refreshScore();
-    world.objective = 'Get to the service door!';
-    world.hint = 'The case alarm tripped — move fast';
+    world.objective = 'Get to the service door — or crack the vault (+400)!';
+    world.hint = 'The vault hides a second prize — or run for the door';
   } else if (!world.posed && pick === 'working') {
     world.objective = 'Crack the case — hold E';
     world.hint = 'Keep still and keep picking';
+  }
+
+  // The vault: hold E at the plinth. Slower than the case, louder too.
+  const vault = updateVault(world.player, dt, input);
+  if (vault === 'done') {
+    tripVaultAlarm(world.alarm);
+    soundPickup();
+    refreshScore();
+    world.objective = 'Get to the service door!';
+    world.hint = 'Sceptre secured — move fast';
+  } else if (!world.posed && vault === 'working') {
+    world.objective = 'Crack the vault — hold E';
+    world.hint = 'Voss patrols the vault — time it right';
   } else if (!world.posed && !world.player.hasLoot) {
     world.objective = 'Reach the Star of Meridian';
     world.hint = 'Stay out of the cones — shadows hide you';
+  } else if (!world.posed && world.player.hasLoot && !world.player.hasVault) {
+    world.objective = 'Get to the service door — or crack the vault (+400)!';
+    world.hint = 'The vault hides a second prize — or run for the door';
   }
 
   // Guards and cameras watch; the strongest view sets the alarm's rise.
@@ -171,6 +267,7 @@ function update(dt) {
     bestSpot = Math.max(bestSpot, spot);
     if (camera.seeing) anySeeing = true;
   }
+  if (anySeeing) world.everSeen = true;
   if (anySeeing && !world.wasSeeing) soundSpotted();
   world.wasSeeing = anySeeing;
 

@@ -1,8 +1,9 @@
-// The thief: movement with wall collision, the lockpick on the glass case,
-// and two tools that cost score — a smoke pellet and an EMP pulse.
+// The thief: movement with wall collision, the lockpick on the glass
+// case, the timed crack on the vault, and two tools that cost score —
+// a smoke pellet and an EMP pulse.
 
 import { PLAYER, TOOLS } from './config.js';
-import { PEDESTAL } from './level.js';
+import { PEDESTAL, VAULT } from './level.js';
 import { distance } from './vision.js';
 
 export function createPlayer(entry) {
@@ -17,6 +18,8 @@ export function createPlayer(entry) {
     empUses: PLAYER.empUses,
     lockpick: 0,
     hasLoot: false,
+    vaultPick: 0,
+    hasVault: false,
     noiseRing: 0,
   };
 }
@@ -78,6 +81,25 @@ export function updateLockpick(player, dt, input) {
   if (player.lockpick >= 1) {
     player.lockpick = 0;
     player.hasLoot = true;
+    return 'done';
+  }
+  return 'working';
+}
+
+// Hold E beside the vault plinth to crack the sceptre loose. Slower than
+// the case and louder when it opens: 'done' the frame it comes free,
+// 'working' while the pick turns, else 'idle'.
+export function updateVault(player, dt, input) {
+  if (player.hasVault) return 'idle';
+  const near = distance(player, VAULT) < VAULT.r + PLAYER.lockpickRange;
+  if (!near || !input.lockpickHeld()) {
+    player.vaultPick = Math.max(0, player.vaultPick - dt * 2);
+    return 'idle';
+  }
+  player.vaultPick += dt / PLAYER.vaultSeconds;
+  if (player.vaultPick >= 1) {
+    player.vaultPick = 0;
+    player.hasVault = true;
     return 'done';
   }
   return 'working';

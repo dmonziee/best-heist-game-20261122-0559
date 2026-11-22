@@ -1,6 +1,7 @@
-// Wall cameras: fixed sentries that sweep their cone back and forth. An EMP
-// pulse blinds them for a while; while blind they watch nothing and their
-// lens goes dark.
+// Wall cameras: fixed sentries that sweep their cone back and forth. An
+// EMP pulse blinds them for a while; while blind they watch nothing and
+// their lens goes dark. Each camera carries its own view range so the
+// difficulty setting can scale it.
 
 import { CAMERA } from './config.js';
 import { coneSees, insideShadow, insideSmoke } from './vision.js';
@@ -13,6 +14,7 @@ export function createCamera(def) {
     maxAngle: def.maxAngle,
     phase: def.phase,
     angle: def.minAngle,
+    viewRange: CAMERA.viewRange,
     disabledLeft: 0,
     seeing: false,
     spot: 0,
@@ -35,7 +37,7 @@ export function updateCamera(camera, dt, time, player, blockers, shadows, smokes
   let spot = 0;
   if (!insideSmoke(player, smokes)) {
     spot = coneSees(
-      camera, camera.angle, CAMERA.viewRange, CAMERA.viewHalfAngle, player, blockers,
+      camera, camera.angle, camera.viewRange, CAMERA.viewHalfAngle, player, blockers,
     );
     if (spot > 0 && insideShadow(player, shadows)) spot *= 0.5;
   }
