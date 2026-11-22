@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Meridian Job — a stealth heist</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0a0d14;
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Trebuchet MS", Verdana, sans-serif;
+  }
+  #wrap {
+    position: relative;
+    width: 1280px;
+    height: 800px;
+  }
+  canvas {
+    display: block;
+    width: 1280px;
+    height: 800px;
+    background: #10141d;
+    border: 1px solid #2a3348;
+  }
+  #hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -26px;
+    text-align: center;
+    color: #5b6b8c;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="1280" height="800"></canvas>
+  <div id="hint">WASD / arrows to move &middot; Shift to sprint &middot; hold E to crack the case &middot; 1 smoke &middot; 2 EMP &middot; P pause &middot; M mute &middot; R restart</div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
